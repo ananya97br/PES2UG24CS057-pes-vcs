@@ -8,7 +8,7 @@
 //
 // Example single entry (conceptual):
 //   "100644 hello.txt\0" followed by 32 raw bytes of SHA-256
-
+#include "index.h"
 #include "tree.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -147,10 +147,21 @@ static int split_path(const char *path, char *first_out, const char **rest_out) 
     return 0;
 }
 
+/* Forward declaration */
+static int write_tree_level(IndexEntry *entries, int count,const char *prefix, ObjectID *id_out);
+
 // Returns 0 on success, -1 on error.
 int tree_from_index(ObjectID *id_out) {
-    // TODO: Implement recursive tree building
-    // (See Lab Appendix for logical steps)
-    (void)id_out;
+    Index idx;
+    if (index_load(&idx) != 0) return -1;
+
+    if (idx.count == 0) return -1; /* nothing staged */
+
+    return write_tree_level(idx.entries, idx.count, "", id_out);
+}
+
+static int write_tree_level(IndexEntry *entries, int count, const char *prefix, ObjectID *id_out) {
+    // implement later....
+    (void)entries; (void)count; (void)prefix; (void)id_out;
     return -1;
 }
