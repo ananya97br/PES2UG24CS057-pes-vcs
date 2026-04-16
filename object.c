@@ -91,15 +91,17 @@ int object_exists(const ObjectID *id) {
 //   - rename             : atomically moving the temp file to the final path
 //
 
-//Stub: object_path (not yet implemented)
 void object_path(const ObjectID *id, char *path_out, size_t path_size) {
-    (void)id; (void)path_out; (void)path_size;
+    char hex[HASH_HEX_SIZE + 1];
+    hash_to_hex(id, hex);
+    snprintf(path_out, path_size, "%s/%.2s/%s", OBJECTS_DIR, hex, hex + 2);
 }
 
-// Stub: object_exists (not yet implemented)
+// Check if an object already exists on disk
 int object_exists(const ObjectID *id) {
-    (void)id;
-    return 0;
+    char path[512];
+    object_path(id, path, sizeof(path));
+    return access(path, F_OK) == 0;
 }
 
 // Returns 0 on success, -1 on error.
