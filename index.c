@@ -16,6 +16,7 @@
 // TODO functions:     index_load, index_save, index_add
 
 #include "index.h"
+#include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -135,10 +136,35 @@ int index_status(const Index *index) {
 //
 // Returns 0 on success, -1 on error.
 int index_load(Index *index) {
-    // TODO: Implement index loading
-    // (See Lab Appendix for logical steps)
-    (void)index;
-    return -1;
+    memset(index, 0, sizeof(*index));
+
+    char index_path[512];
+    snprintf(index_path, sizeof(index_path), ".pes/index");
+
+    FILE *f = fopen(index_path, "r");
+    if (!f) {
+        /* No index file yet — empty index, not an error */
+        return 0;
+    }
+
+    char hex[65];
+    while (index->count < MAX_INDEX_ENTRIES) {
+        IndexEntry *e = &index->entries[index->count];
+        int ret = fscanf(f, "%o %64s %llu %u %511s\n",
+                         &e->mode,
+                         hex,
+                         (unsigned long long *)&e->mtime_sec,
+                         &e->size,
+                         e->path);
+        if (ret == EOF) break;
+        if (ret != 5) { fclose(f); return -1; }
+
+        if (hex_to_hash(hex, &e->hash) != 0) { fclose(f); return -1; }
+        index->count++;
+    }
+
+    fclose(f);
+    return 0;
 }
 
 // Save the index to .pes/index atomically.
@@ -150,12 +176,43 @@ int index_load(Index *index) {
 //   - fflush, fileno, fsync, fclose    : flushing userspace buffers and syncing to disk
 //   - rename                           : atomically moving the temp file over the old index
 //
-// Returns 0 on success, -1 on error.
+static int compare_entries_by_path(const void *a, const void *b) {
+    return strcmp(((const IndexEntry *)a)->path,
+                  ((const IndexEntry *)b)->path);
+}
+
 int index_save(const Index *index) {
-    // TODO: Implement atomic index saving
-    // (See Lab Appendix for logical steps)
-    (void)index;
-    return -1;
+    /* Write to a temp file first, then atomically rename */
+    char tmp_path[512];
+    snprintf(tmp_path, sizeof(tmp_path), ".pes/index.tmp");
+
+    FILE *f = fopen(tmp_path, "w");
+    if (!f) return -1;
+
+    /* Sort a local copy by path */
+    Index sorted = *index;
+    qsort(sorted.entries, sorted.count, sizeof(IndexEntry),
+          compare_entries_by_path);
+
+    for (int i = 0; i < sorted.count; i++) {
+        IndexEntry *e = &sorted.entries[i];
+        char hex[65];
+        hash_to_hex(&e->hash, hex);
+        fprintf(f, "%o %s %llu %u %s\n",
+                e->mode,
+                hex,
+                (unsigned long long)e->mtime_sec,
+                e->size,
+                e->path);
+    }
+
+    /* Flush userspace buffers, sync to disk, then rename */
+    if (fflush(f) != 0)              { fclose(f); return -1; }
+    if (fsync(fileno(f)) != 0)       { fclose(f); return -1; }
+    fclose(f);
+
+    if (rename(tmp_path, ".pes/index") != 0) return -1;
+    return 0;
 }
 
 // Stage a file for the next commit.
