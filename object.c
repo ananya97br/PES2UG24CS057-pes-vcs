@@ -91,19 +91,6 @@ int object_exists(const ObjectID *id) {
 //   - rename             : atomically moving the temp file to the final path
 //
 
-void object_path(const ObjectID *id, char *path_out, size_t path_size) {
-    char hex[HASH_HEX_SIZE + 1];
-    hash_to_hex(id, hex);
-    snprintf(path_out, path_size, "%s/%.2s/%s", OBJECTS_DIR, hex, hex + 2);
-}
-
-// Check if an object already exists on disk
-int object_exists(const ObjectID *id) {
-    char path[512];
-    object_path(id, path, sizeof(path));
-    return access(path, F_OK) == 0;
-}
-
 int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out) {
     // Step 1: Build full object = header + '\0' + data
     const char *type_str;
