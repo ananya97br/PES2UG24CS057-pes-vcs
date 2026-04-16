@@ -91,7 +91,17 @@ int object_exists(const ObjectID *id) {
 //   - rename             : atomically moving the temp file to the final path
 //
 
-//
+//Stub: object_path (not yet implemented)
+void object_path(const ObjectID *id, char *path_out, size_t path_size) {
+    (void)id; (void)path_out; (void)path_size;
+}
+
+// Stub: object_exists (not yet implemented)
+int object_exists(const ObjectID *id) {
+    (void)id;
+    return 0;
+}
+
 // Returns 0 on success, -1 on error.
 int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out) {
     // TODO: Implement
