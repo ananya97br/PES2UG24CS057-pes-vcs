@@ -160,8 +160,45 @@ int tree_from_index(ObjectID *id_out) {
     return write_tree_level(idx.entries, idx.count, "", id_out);
 }
 
-static int write_tree_level(IndexEntry *entries, int count, const char *prefix, ObjectID *id_out) {
-    // implement later....
-    (void)entries; (void)count; (void)prefix; (void)id_out;
+static int write_tree_level(IndexEntry *entries, int count,
+                            const char *prefix, ObjectID *id_out) {
+    Tree tree;
+    tree.count = 0;
+
+    int i = 0;
+    while (i < count) {
+        const char *path = entries[i].path;
+
+        /* Strip the prefix to get the path relative to this directory */
+        size_t plen = strlen(prefix);
+        if (plen > 0) {
+            if (strncmp(path, prefix, plen) != 0 || path[plen] != '/') {
+                i++;
+                continue;
+            }
+            path = path + plen + 1;
+        }
+
+        char first[256];
+        const char *rest;
+        if (split_path(path, first, &rest) != 0) return -1;
+
+        if (rest == NULL) {
+            /* Leaf file — add blob entry directly */
+            if (tree.count >= MAX_TREE_ENTRIES) return -1;
+            TreeEntry *te = &tree.entries[tree.count++];
+            te->mode = entries[i].mode;
+            memcpy(te->hash.hash, entries[i].hash.hash, HASH_SIZE);
+            strncpy(te->name, first, sizeof(te->name) - 1);
+            te->name[sizeof(te->name) - 1] = '\0';
+            i++;
+        } else {
+            /* Directory — later.... */
+            i++;
+        }
+    }
+
+    /* Serialize and write — later... */
+    (void)id_out;
     return -1;
 }
