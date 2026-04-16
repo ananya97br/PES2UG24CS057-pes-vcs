@@ -223,10 +223,40 @@ int index_save(const Index *index) {
 //   - stat / lstat                     : getting file metadata (size, mtime, mode)
 //   - index_find                       : checking if the file is already staged
 //
-// Returns 0 on success, -1 on error.
 int index_add(Index *index, const char *path) {
-    // TODO: Implement file staging
-    // (See Lab Appendix for logical steps)
-    (void)index; (void)path;
-    return -1;
+    /* Read the file contents */
+    FILE *f = fopen(path, "rb");
+    if (!f) {
+        fprintf(stderr, "error: cannot open '%s'\n", path);
+        return -1;
+    }
+
+    fseek(f, 0, SEEK_END);
+    long file_size = ftell(f);
+    rewind(f);
+
+    if (file_size < 0) { fclose(f); return -1; }
+
+    uint8_t *buf = malloc((size_t)file_size);
+    if (!buf) { fclose(f); return -1; }
+
+    if (fread(buf, 1, (size_t)file_size, f) != (size_t)file_size) {
+        free(buf); fclose(f); return -1;
+    }
+    fclose(f);
+
+    /* Write blob to object store */
+    ObjectID blob_id;
+    if (object_write(OBJ_BLOB, buf, (size_t)file_size, &blob_id) != 0) {
+        free(buf); return -1;
+    }
+    free(buf);
+
+    /* Get file metadata */
+    struct stat st;
+    if (lstat(path, &st) != 0) return -1;
+
+    /* Update or add index entry — continued in next commit */
+    (void)index;
+    return 0;
 }
