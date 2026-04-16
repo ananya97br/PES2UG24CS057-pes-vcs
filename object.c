@@ -104,9 +104,8 @@ int object_exists(const ObjectID *id) {
     return access(path, F_OK) == 0;
 }
 
-// Returns 0 on success, -1 on error.
 int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out) {
-    // Step 1: Resolve type string
+    // Step 1: Build full object = header + '\0' + data
     const char *type_str;
     switch (type) {
         case OBJ_BLOB:   type_str = "blob";   break;
@@ -115,12 +114,10 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
         default: return -1;
     }
 
-    // Step 1: Build header "blob 16\0" + data into one buffer
     char header[64];
     int header_len = snprintf(header, sizeof(header), "%s %zu", type_str, len);
-
-    // full object = header + '\0' separator + raw data
     size_t full_len = header_len + 1 + len;
+
     uint8_t *full = malloc(full_len);
     if (!full) return -1;
 
@@ -128,18 +125,72 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
     full[header_len] = '\0';
     memcpy(full + header_len + 1, data, len);
 
-    // Step 2: Compute SHA-256 of the entire object (header + data)
+    // Step 2: Hash the full object
     compute_hash(full, full_len, id_out);
 
-    // Step 3: Deduplication — if object already exists, no need to write
+    // Step 3: Deduplication check
     if (object_exists(id_out)) {
         free(full);
         return 0;
     }
 
-    // Disk write not yet implemented
+    // Step 4: Create shard directory .pes/objects/XX/
+    char hex[HASH_HEX_SIZE + 1];
+    hash_to_hex(id_out, hex);
+
+    char shard_dir[512];
+    snprintf(shard_dir, sizeof(shard_dir), "%s/%.2s", OBJECTS_DIR, hex);
+    mkdir(shard_dir, 0755); // ok if already exists
+
+    // Step 5: Write to a temp file using mkstemp
+    char tmp_path[512];
+    snprintf(tmp_path, sizeof(tmp_path), "%s/tmp_XXXXXX", shard_dir);
+
+    int fd = mkstemp(tmp_path);
+    if (fd < 0) {
+        free(full);
+        return -1;
+    }
+
+    // Write full object in a loop (handles partial writes)
+    size_t written = 0;
+    while (written < full_len) {
+        ssize_t n = write(fd, full + written, full_len - written);
+        if (n < 0) {
+            close(fd);
+            unlink(tmp_path);
+            free(full);
+            return -1;
+        }
+        written += n;
+    }
     free(full);
-    return -1;
+
+    // Step 6: fsync the file to flush data to disk
+    if (fsync(fd) < 0) {
+        close(fd);
+        unlink(tmp_path);
+        return -1;
+    }
+    close(fd);
+
+    // Step 7: Atomically rename temp file to final object path
+    char final_path[512];
+    object_path(id_out, final_path, sizeof(final_path));
+
+    if (rename(tmp_path, final_path) < 0) {
+        unlink(tmp_path);
+        return -1;
+    }
+
+    // Step 8: fsync the shard directory to persist the rename
+    int dir_fd = open(shard_dir, O_RDONLY);
+    if (dir_fd >= 0) {
+        fsync(dir_fd);
+        close(dir_fd);
+    }
+
+    return 0;
 }
 
 // Read an object from the store.
