@@ -128,6 +128,25 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
 //   - tree_serialize  : convert your populated Tree struct into a binary buffer
 //   - object_write    : save that binary buffer to the store as OBJ_TREE
 //
+/* Split "dir/rest/file.c" into first="dir", rest="rest/file.c".
+   If no slash exists, first=path, rest=NULL (leaf file).
+   Returns 0 on success. first_out must be a buffer of at least 256 bytes. */
+static int split_path(const char *path, char *first_out, const char **rest_out) {
+    const char *slash = strchr(path, '/');
+    if (!slash) {
+        strncpy(first_out, path, 255);
+        first_out[255] = '\0';
+        *rest_out = NULL;
+        return 0;
+    }
+    size_t len = slash - path;
+    if (len >= 256) return -1;
+    memcpy(first_out, path, len);
+    first_out[len] = '\0';
+    *rest_out = slash + 1;
+    return 0;
+}
+
 // Returns 0 on success, -1 on error.
 int tree_from_index(ObjectID *id_out) {
     // TODO: Implement recursive tree building
