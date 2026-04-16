@@ -130,6 +130,7 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
 //
 /* Split "dir/rest" → first="dir", rest="rest".
    If no slash, first=path, rest=NULL (leaf file). */
+   
 static int split_path(const char *path, char *first_out, const char **rest_out) {
     const char *slash = strchr(path, '/');
     if (!slash) {
@@ -164,12 +165,12 @@ static int write_tree_level(IndexEntry *entries, int count,
     for (int i = 0; i < count; i++) {
         const char *full_path = entries[i].path;
 
-        /* Compute path relative to the current directory level */
+        // Compute path relative to the current directory level
         const char *rel;
         if (plen == 0) {
             rel = full_path;
         } else {
-            /* Entry must start with "prefix/" */
+            // Entry must start with "prefix/" 
             if (strncmp(full_path, prefix, plen) != 0 || full_path[plen] != '/')
                 continue;
             rel = full_path + plen + 1;
@@ -188,19 +189,19 @@ static int write_tree_level(IndexEntry *entries, int count,
             strncpy(te->name, first, sizeof(te->name) - 1);
             te->name[sizeof(te->name) - 1] = '\0';
         } else {
-            /* Subdirectory: recurse once per unique name */
+            // Subdirectory: recurse once per unique name
             int already_seen = 0;
             for (int s = 0; s < seen_count; s++) {
                 if (strcmp(seen_dirs[s], first) == 0) { already_seen = 1; break; }
             }
             if (already_seen) continue;
 
-            /* Record this subdir name */
+            // Record this subdir name
             strncpy(seen_dirs[seen_count], first, 255);
             seen_dirs[seen_count][255] = '\0';
             seen_count++;
 
-            /* Build the prefix for the sub-level */
+            // Build the prefix for the sub-level
             char sub_prefix[512];
             if (plen == 0)
                 snprintf(sub_prefix, sizeof(sub_prefix), "%s", first);
@@ -220,7 +221,7 @@ static int write_tree_level(IndexEntry *entries, int count,
         }
     }
 
-    /* Serialize and store this level's tree object */
+    // Serialize and store this level's tree object
     void *data;
     size_t len;
     if (tree_serialize(&tree, &data, &len) != 0) return -1;
