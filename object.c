@@ -106,8 +106,39 @@ int object_exists(const ObjectID *id) {
 
 // Returns 0 on success, -1 on error.
 int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out) {
-    // TODO: Implement
-    (void)type; (void)data; (void)len; (void)id_out;
+    // Step 1: Resolve type string
+    const char *type_str;
+    switch (type) {
+        case OBJ_BLOB:   type_str = "blob";   break;
+        case OBJ_TREE:   type_str = "tree";   break;
+        case OBJ_COMMIT: type_str = "commit"; break;
+        default: return -1;
+    }
+
+    // Step 1: Build header "blob 16\0" + data into one buffer
+    char header[64];
+    int header_len = snprintf(header, sizeof(header), "%s %zu", type_str, len);
+
+    // full object = header + '\0' separator + raw data
+    size_t full_len = header_len + 1 + len;
+    uint8_t *full = malloc(full_len);
+    if (!full) return -1;
+
+    memcpy(full, header, header_len);
+    full[header_len] = '\0';
+    memcpy(full + header_len + 1, data, len);
+
+    // Step 2: Compute SHA-256 of the entire object (header + data)
+    compute_hash(full, full_len, id_out);
+
+    // Step 3: Deduplication — if object already exists, no need to write
+    if (object_exists(id_out)) {
+        free(full);
+        return 0;
+    }
+
+    // Disk write not yet implemented
+    free(full);
     return -1;
 }
 
