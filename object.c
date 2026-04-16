@@ -259,10 +259,11 @@ int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_
     // Steps 5-6: Set outputs and copy data
     *type_out = parsed_type;
     *len_out  = actual_len;
-    *data_out = malloc(actual_len);
+    *data_out = malloc(actual_len + 1);
     if (!*data_out) { free(buf); return -1; }
 
     memcpy(*data_out, data_start, actual_len);
+    ((uint8_t *)*data_out)[actual_len] = '\0';  // null-terminate
     free(buf);
     return 0;
 }

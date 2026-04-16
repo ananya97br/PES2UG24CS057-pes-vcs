@@ -214,7 +214,11 @@ int commit_create(const char *message, ObjectID *commit_id_out) {
 
     snprintf(c.author, sizeof(c.author), "%s", pes_author());
     c.timestamp = (uint64_t)time(NULL);
-    snprintf(c.message, sizeof(c.message), "%s", message);
+    // Strip any trailing newline from message
+    size_t mlen = strlen(message);
+    while (mlen > 0 && (message[mlen-1] == '\n' || message[mlen-1] == '\r'))
+        mlen--;
+    snprintf(c.message, sizeof(c.message), "%.*s\n", (int)mlen, message);
 
     void *raw;
     size_t raw_len;
