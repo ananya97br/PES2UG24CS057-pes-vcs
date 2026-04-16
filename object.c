@@ -215,8 +215,67 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
 //
 // The caller is responsible for calling free(*data_out).
 // Returns 0 on success, -1 on error (file not found, corrupt, etc.).
+
 int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_t *len_out) {
-    // TODO: Implement
-    (void)id; (void)type_out; (void)data_out; (void)len_out;
-    return -1;
+    // Step 1: Get path and open file
+    char path[512];
+    object_path(id, path, sizeof(path));
+
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+
+    // Step 2: Read entire file into buffer
+    fseek(f, 0, SEEK_END);
+    long file_size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    if (file_size < 0) { fclose(f); return -1; }
+
+    uint8_t *buf = malloc(file_size);
+    if (!buf) { fclose(f); return -1; }
+
+    if ((long)fread(buf, 1, file_size, f) != file_size) {
+        fclose(f); free(buf); return -1;
+    }
+    fclose(f);
+
+    // Step 3: Find '\0' separator between header and data
+    uint8_t *null_pos = memchr(buf, '\0', file_size);
+    if (!null_pos) { free(buf); return -1; }
+
+    // Step 3: Parse type from header
+    char *header = (char *)buf;
+    ObjectType parsed_type;
+    if      (strncmp(header, "blob ",   5) == 0) parsed_type = OBJ_BLOB;
+    else if (strncmp(header, "tree ",   5) == 0) parsed_type = OBJ_TREE;
+    else if (strncmp(header, "commit ", 7) == 0) parsed_type = OBJ_COMMIT;
+    else { free(buf); return -1; }
+
+    // Parse expected data size from header
+    char *size_str = strchr(header, ' ');
+    if (!size_str) { free(buf); return -1; }
+    size_t expected_len = (size_t)atol(size_str + 1);
+
+    // Data starts after the '\0'
+    uint8_t *data_start = null_pos + 1;
+    size_t actual_len   = file_size - (data_start - buf);
+
+    if (actual_len != expected_len) { free(buf); return -1; }
+
+    // Step 4: Integrity check — recompute hash of entire file
+    ObjectID computed;
+    compute_hash(buf, file_size, &computed);
+    if (memcmp(computed.hash, id->hash, HASH_SIZE) != 0) {
+        free(buf); return -1; // corrupted
+    }
+
+    // Steps 5-6: Set outputs and copy data
+    *type_out = parsed_type;
+    *len_out  = actual_len;
+    *data_out = malloc(actual_len);
+    if (!*data_out) { free(buf); return -1; }
+
+    memcpy(*data_out, data_start, actual_len);
+    free(buf);
+    return 0;
 }
