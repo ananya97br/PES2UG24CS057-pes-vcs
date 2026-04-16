@@ -160,31 +160,31 @@ int tree_from_index(ObjectID *id_out) {
     return write_tree_level(idx.entries, idx.count, "", id_out);
 }
 
-static int write_tree_level(IndexEntry *entries, int count,
-                            const char *prefix, ObjectID *id_out) {
+static int write_tree_level(IndexEntry *entries, int count,const char *prefix, ObjectID *id_out) {
     Tree tree;
     tree.count = 0;
 
     int i = 0;
     while (i < count) {
-        const char *path = entries[i].path;
+        const char *full_path = entries[i].path;
 
-        /* Strip the prefix to get the path relative to this directory */
+        /* Build the path relative to this level */
         size_t plen = strlen(prefix);
-        if (plen > 0) {
-            if (strncmp(path, prefix, plen) != 0 || path[plen] != '/') {
-                i++;
-                continue;
-            }
-            path = path + plen + 1;
+        const char *rel;
+        if (plen == 0) {
+            rel = full_path;
+        } else {
+            if (strncmp(full_path, prefix, plen) != 0 || full_path[plen] != '/')
+                { i++; continue; }
+            rel = full_path + plen + 1;
         }
 
         char first[256];
         const char *rest;
-        if (split_path(path, first, &rest) != 0) return -1;
+        if (split_path(rel, first, &rest) != 0) return -1;
 
         if (rest == NULL) {
-            /* Leaf file — add blob entry directly */
+            /* Leaf file */
             if (tree.count >= MAX_TREE_ENTRIES) return -1;
             TreeEntry *te = &tree.entries[tree.count++];
             te->mode = entries[i].mode;
@@ -193,12 +193,39 @@ static int write_tree_level(IndexEntry *entries, int count,
             te->name[sizeof(te->name) - 1] = '\0';
             i++;
         } else {
-            /* Directory — later.... */
-            i++;
+            /* Directory: build new prefix and collect all entries under it */
+            char sub_prefix[512];
+            if (plen == 0)
+                snprintf(sub_prefix, sizeof(sub_prefix), "%s", first);
+            else
+                snprintf(sub_prefix, sizeof(sub_prefix), "%s/%s", prefix, first);
+
+            ObjectID sub_id;
+            if (write_tree_level(entries, count, sub_prefix, &sub_id) != 0)
+                return -1;
+
+            if (tree.count >= MAX_TREE_ENTRIES) return -1;
+            TreeEntry *te = &tree.entries[tree.count++];
+            te->mode = MODE_DIR;
+            memcpy(te->hash.hash, sub_id.hash, HASH_SIZE);
+            strncpy(te->name, first, sizeof(te->name) - 1);
+            te->name[sizeof(te->name) - 1] = '\0';
+
+            /* Skip all entries under this subdirectory */
+            while (i < count &&
+                   strncmp(entries[i].path, sub_prefix, strlen(sub_prefix)) == 0 &&
+                   (entries[i].path[strlen(sub_prefix)] == '/' ||
+                    entries[i].path[strlen(sub_prefix)] == '\0'))
+                i++;
         }
     }
 
-    /* Serialize and write — later... */
-    (void)id_out;
-    return -1;
+    /* Serialize and write the tree object */
+    void *data;
+    size_t len;
+    if (tree_serialize(&tree, &data, &len) != 0) return -1;
+
+    int ret = object_write(OBJ_TREE, data, len, id_out);
+    free(data);
+    return ret;
 }
